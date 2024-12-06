@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -19,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -53,13 +55,13 @@ data class ListItem(
 @Composable
 fun MainScreen(imageFileName: String, filesDir: File) {
     val context = LocalContext.current
-    val items = mutableListOf<ListItem>()
+    val items = remember { mutableStateListOf<ListItem>() }
     val scope = rememberCoroutineScope()
 
     // Загружаем список сохранённых изображений при запуске
     LaunchedEffect(Unit) {
         scope.launch(Dispatchers.IO) {
-            val savedPaths = loadSavedImagePaths(context) // Загружаем пути
+            val savedPaths = loadSavedImagePaths(context) // Загружаем все пути
             savedPaths.forEach { path ->
                 val drawable = loadImageFromInternalStorage(File(path)) // Загружаем изображения
                 if (drawable != null) {
@@ -105,16 +107,29 @@ fun MainScreen(imageFileName: String, filesDir: File) {
         Button(
             onClick = {
                 if (url.isNotEmpty()) {
-                    GlobalScope.launch(Dispatchers.IO) {
+                    scope.launch(Dispatchers.IO) {
                         val downloadedDrawable = downloadImage(url, context)
                         if (downloadedDrawable != null) {
                             val savedPath = saveImageToInternalStorage(downloadedDrawable, filesDir)
                             if (savedPath != null) {
-                                items.add(ListItem(drawable = downloadedDrawable))
-                                saveImagePath(context, savedPath) // Сохраняем путь
+                                withContext(Dispatchers.Main) {
+                                    items.add(ListItem(drawable = downloadedDrawable))
+                                    Toast.makeText(context, "Изображение добавлено", Toast.LENGTH_SHORT).show()
+                                }
+                                saveImagePath(context, savedPath)
+                            } else {
+                                withContext(Dispatchers.Main) {
+                                    Toast.makeText(context, "Ошибка сохранения изображения", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } else {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Ошибка загрузки изображения", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
+                } else {
+                    Toast.makeText(context, "Введите ссылку", Toast.LENGTH_SHORT).show()
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -122,14 +137,14 @@ fun MainScreen(imageFileName: String, filesDir: File) {
             Text("Загрузить изображение")
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(items.size) { index ->
-                ImageCard(item = items[index])
+            items(items.size) { item ->
+                ImageCard(item = items[item])
             }
         }
     }
@@ -138,6 +153,7 @@ fun MainScreen(imageFileName: String, filesDir: File) {
 @Composable
 fun ImageCard(item: ListItem) {
     Card(
+        backgroundColor = Color.Gray,
         modifier = Modifier
             .fillMaxWidth()
             .padding(8.dp),
@@ -172,14 +188,14 @@ fun saveImagePath(context: Context, path: String) {
     val sharedPreferences = context.getSharedPreferences("image_paths", Context.MODE_PRIVATE)
     val editor = sharedPreferences.edit()
     val paths = sharedPreferences.getStringSet("paths", mutableSetOf()) ?: mutableSetOf()
-    paths.add(path) // Добавляем путь в множество
-    editor.putStringSet("paths", paths)
+    paths.add(path) // Добавляем новый путь в множество
+    editor.putStringSet("paths", paths) // Сохраняем обновлённое множество
     editor.apply()
 }
 
-fun loadSavedImagePaths(context: Context): Set<String> {
+fun loadSavedImagePaths(context: Context): List<String> {
     val sharedPreferences = context.getSharedPreferences("image_paths", Context.MODE_PRIVATE)
-    return sharedPreferences.getStringSet("paths", emptySet()) ?: emptySet()
+    return sharedPreferences.getStringSet("paths", emptySet())?.toList() ?: emptyList()
 }
 
 fun saveImageToInternalStorage(drawable: Drawable, filesDir: File): String? {
