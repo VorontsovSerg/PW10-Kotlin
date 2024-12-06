@@ -1,132 +1,221 @@
 package com.example.pw10
 
+import android.content.Context
+import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.Card
-import androidx.compose.material3.*
+import androidx.compose.material.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.lifecycleScope
-import com.bumptech.glide.Glide
+import androidx.core.graphics.drawable.toBitmap
+import coil.ImageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import kotlinx.serialization.*
-import kotlinx.serialization.json.*
-
-@Serializable
-data class ImageData(
-    val url: String,
-    val bitmap: Bitmap
-)
 
 class MainActivity : ComponentActivity() {
-
-    private val imageFileName = "downloaded_images.json"
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            var url by remember { mutableStateOf("") }
-            var images by remember { mutableStateOf(listOf<ImageData>()) }
+            MainScreen(imageFileName = "saved_image.jpg", filesDir = filesDir)
+        }
+    }
+}
 
-            // Загружаем изображения при старте приложения
-            LaunchedEffect(Unit) {
-                images = loadImagesFromInternalStorage()
-            }
+data class ListItem(
+    val drawable: Drawable
+)
 
-            Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    BasicTextField(
-                        value = url,
-                        onValueChange = { url = it },
-                        modifier = Modifier.weight(1f).padding(8.dp)
-                    )
-                    Button(onClick = {
-                        lifecycleScope.launch(Dispatchers.IO) {
-                            val bitmap = downloadImage(url)
-                            if (bitmap != null) {
-                                val imageData = ImageData(url, bitmap)
-                                saveImageToInternalStorage(imageData)
-                                images = loadImagesFromInternalStorage()
-                            }
-                        }
-                    }) {
-                        Text("Загрузить")
-                    }
-                }
-                LazyColumn {
-                    items(images) { image ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp)
-                                .clickable { /* Handle click */ }
-                        ) {
-                            Column {
-                                Image(
-                                    bitmap = image.bitmap.asImageBitmap(),
-                                    contentDescription = null,
-                                    modifier = Modifier.height(200.dp)
-                                )
-                                Text(text = image.url, modifier = Modifier.padding(8.dp))
-                            }
-                        }
+@Composable
+fun MainScreen(imageFileName: String, filesDir: File) {
+    val context = LocalContext.current
+    val items = mutableListOf<ListItem>()
+    val scope = rememberCoroutineScope()
+
+    // Загружаем список сохранённых изображений при запуске
+    LaunchedEffect(Unit) {
+        scope.launch(Dispatchers.IO) {
+            val savedPaths = loadSavedImagePaths(context) // Загружаем пути
+            savedPaths.forEach { path ->
+                val drawable = loadImageFromInternalStorage(File(path)) // Загружаем изображения
+                if (drawable != null) {
+                    withContext(Dispatchers.Main) {
+                        items.add(ListItem(drawable = drawable)) // Добавляем изображение в список
                     }
                 }
             }
         }
     }
 
-    private suspend fun downloadImage(url: String): Bitmap? {
-        return withContext(Dispatchers.IO) {
-            try {
-                Glide.with(this@MainActivity)
-                    .asBitmap()
-                    .load(url)
-                    .submit()
-                    .get()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Top,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        var url by remember { mutableStateOf("") }
+
+        BasicTextField(
+            value = url,
+            onValueChange = { url = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp),
+            decorationBox = { innerTextField ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .background(MaterialTheme.colors.surface)
+                        .padding(8.dp)
+                ) {
+                    if (url.isEmpty()) Text("Введите ссылку на изображение")
+                    innerTextField()
+                }
+            }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                if (url.isNotEmpty()) {
+                    GlobalScope.launch(Dispatchers.IO) {
+                        val downloadedDrawable = downloadImage(url, context)
+                        if (downloadedDrawable != null) {
+                            val savedPath = saveImageToInternalStorage(downloadedDrawable, filesDir)
+                            if (savedPath != null) {
+                                items.add(ListItem(drawable = downloadedDrawable))
+                                saveImagePath(context, savedPath) // Сохраняем путь
+                            }
+                        }
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Загрузить изображение")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(items.size) { index ->
+                ImageCard(item = items[index])
             }
         }
     }
+}
 
-    private fun saveImageToInternalStorage(imageData: ImageData) {
-        try {
-            val file = File(filesDir, imageFileName)
-            val outputStream = FileOutputStream(file, true)
-
-            // Сериализация объекта ImageData в строку JSON
-            val json = Json.encodeToString(imageData)
-            outputStream.write(json.toByteArray())
-            outputStream.flush()
-            outputStream.close()
-        } catch (e: IOException) {
-            e.printStackTrace()
-        }
+@Composable
+fun ImageCard(item: ListItem) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        elevation = 8.dp
+    ) {
+        Image(
+            painter = createImagePainter(item.drawable),
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(200.dp) // Устанавливаем фиксированную высоту карточки
+        )
     }
+}
 
-    private fun loadImagesFromInternalStorage(): List<ImageData> {
-        val file = File(filesDir, imageFileName)
-        if (!file.exists()) return emptyList()
+@Composable
+fun createImagePainter(drawable: Drawable): Painter {
+    val bitmap = (drawable as? BitmapDrawable)?.bitmap
+    return remember(bitmap) {
+        bitmap?.asImageBitmap()?.let { BitmapPainter(it) } ?: EmptyPainter()
+    }
+}
 
-        val jsonString = file.readText()
-        return Json.decodeFromString<List<ImageData>>(jsonString)
+class EmptyPainter : Painter() {
+    override val intrinsicSize: Size
+        get() = Size.Unspecified
+
+    override fun DrawScope.onDraw() {}
+}
+
+fun saveImagePath(context: Context, path: String) {
+    val sharedPreferences = context.getSharedPreferences("image_paths", Context.MODE_PRIVATE)
+    val editor = sharedPreferences.edit()
+    val paths = sharedPreferences.getStringSet("paths", mutableSetOf()) ?: mutableSetOf()
+    paths.add(path) // Добавляем путь в множество
+    editor.putStringSet("paths", paths)
+    editor.apply()
+}
+
+fun loadSavedImagePaths(context: Context): Set<String> {
+    val sharedPreferences = context.getSharedPreferences("image_paths", Context.MODE_PRIVATE)
+    return sharedPreferences.getStringSet("paths", emptySet()) ?: emptySet()
+}
+
+fun saveImageToInternalStorage(drawable: Drawable, filesDir: File): String? {
+    try {
+        val file = File(filesDir, "${System.currentTimeMillis()}.jpg")
+        val outputStream = FileOutputStream(file)
+        val bitmap = (drawable as BitmapDrawable).bitmap
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+        outputStream.flush()
+        outputStream.close()
+        return file.absolutePath
+    } catch (e: IOException) {
+        e.printStackTrace()
+    }
+    return null
+}
+
+fun loadImageFromInternalStorage(file: File): Drawable? {
+    return if (file.exists()) {
+        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+        BitmapDrawable(Resources.getSystem(), bitmap)
+    } else {
+        null
+    }
+}
+
+suspend fun downloadImage(url: String, context: Context): Drawable? {
+    return try {
+        val request = ImageRequest.Builder(context)
+            .data(url)
+            .build()
+
+        val result = (ImageLoader(context).execute(request) as? SuccessResult)?.drawable
+        result
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
     }
 }

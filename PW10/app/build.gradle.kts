@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.androidx.ui.v150)
     implementation(libs.androidx.ui.tooling.preview.v150)
     implementation (libs.kotlinx.serialization.json)
+    implementation ("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.ui)
