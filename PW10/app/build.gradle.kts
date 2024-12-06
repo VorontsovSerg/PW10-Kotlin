@@ -50,7 +50,7 @@ dependencies {
     implementation(libs.androidx.material)
     implementation(libs.androidx.ui.v150)
     implementation(libs.androidx.ui.tooling.preview.v150)
-    implementation("androidx.compose.foundation:foundation:1.5.0")
+    implementation (libs.kotlinx.serialization.json)
 
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.ui)
