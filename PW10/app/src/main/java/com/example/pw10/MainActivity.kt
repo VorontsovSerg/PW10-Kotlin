@@ -1,5 +1,6 @@
 package com.example.pw10
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Resources
 import android.graphics.Bitmap
@@ -58,15 +59,14 @@ fun MainScreen(imageFileName: String, filesDir: File) {
     val items = remember { mutableStateListOf<ListItem>() }
     val scope = rememberCoroutineScope()
 
-    // Загружаем список сохранённых изображений при запуске
     LaunchedEffect(Unit) {
         scope.launch(Dispatchers.IO) {
-            val savedPaths = loadSavedImagePaths(context) // Загружаем все пути
+            val savedPaths = loadSavedImagePaths(context)
             savedPaths.forEach { path ->
-                val drawable = loadImageFromInternalStorage(File(path)) // Загружаем изображения
+                val drawable = loadImageFromInternalStorage(File(path))
                 if (drawable != null) {
                     withContext(Dispatchers.Main) {
-                        items.add(ListItem(drawable = drawable)) // Добавляем изображение в список
+                        items.add(ListItem(drawable = drawable))
                     }
                 }
             }
@@ -164,7 +164,7 @@ fun ImageCard(item: ListItem) {
             contentDescription = null,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp) // Устанавливаем фиксированную высоту карточки
+                .height(200.dp)
         )
     }
 }
@@ -184,12 +184,13 @@ class EmptyPainter : Painter() {
     override fun DrawScope.onDraw() {}
 }
 
+@SuppressLint("MutatingSharedPrefs")
 fun saveImagePath(context: Context, path: String) {
     val sharedPreferences = context.getSharedPreferences("image_paths", Context.MODE_PRIVATE)
     val editor = sharedPreferences.edit()
     val paths = sharedPreferences.getStringSet("paths", mutableSetOf()) ?: mutableSetOf()
-    paths.add(path) // Добавляем новый путь в множество
-    editor.putStringSet("paths", paths) // Сохраняем обновлённое множество
+    paths.add(path)
+    editor.putStringSet("paths", paths)
     editor.apply()
 }
 
